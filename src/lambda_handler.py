@@ -1,2 +1,2 @@
-def lambda_handler(event, context):
+def lambda_func(event, context):
     pass
