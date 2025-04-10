@@ -60,7 +60,7 @@ resource "aws_lambda_function" "guardian_api_lambda" {
 
   environment {
     variables = {
-      apiKey = var.guardian_api_key
+      api_key = var.guardian_api_key
       sqs_queue_url = aws_sqs_queue.retrieved_guardian_articles.url
     }
   }
