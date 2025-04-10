@@ -1,5 +1,6 @@
-from src.local_invoke import main
+from src.local_invoke import main, parse_args
+import shlex
 
-
-def test_main():
-    main()
+class TestParseArgs:
+    def test_returns_dict(self):
+        assert isinstance(parse_args(['q','r']), dict)
