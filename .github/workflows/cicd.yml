@@ -1,0 +1,87 @@
+## Python - format, test, coverage, safety
+## terraform - init (remote state), format, validate, plan
+
+name: CI/CD Workflow
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+jobs:  
+  test-python:
+    runs-on: ubuntu-latest
+    name: Run Python Tests
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        
+      - name: Install requirements
+        run: make requirements
+
+      - name: Dev setup
+        run: make dev-setup
+
+      - name: Run security, formatting, unit and coverage tests
+        run: make run-checks
+
+  terraform:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+    needs: test-python
+    name: Terraform Plan & Apply on push
+    env:
+          TF_VAR_aws_region: ${{ secrets.AWS_DEFAULT_REGION }}
+          TF_VAR_aws_account: ${{ secrets.AWS_ACCOUNT }}
+          TF_VAR_lambda_name: ${{ secrets.LAMBDA_NAME }}
+          TF_VAR_guardian_api_key: ${{ secrets.GUARDIAN_API_KEY }}
+          TF_VAR_sqs_queue_name: ${{ secrets.SQS_QUEUE_NAME }}
+          
+    steps:
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
+        
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '1.9.3'
+
+      - name: Terraform init
+        run: make tf-init
+
+      - name: Terraform Format
+        run: make tf-fmt
+
+      - name: Terraform Validate
+        run: make tf-validate
+        
+      - name: Terraform plan
+        run: make tf-plan-cicd
+  
+        # On push to "main", build or change infrastructure according to Terraform configuration files
+      - name: Terraform Apply
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: make tf-apply-cicd
+
+        
+          

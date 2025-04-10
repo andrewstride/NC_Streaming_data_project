@@ -5,9 +5,16 @@ terraform {
       version = "~> 5.0"
     }
   }
+  backend "s3" {
+    bucket = "andrewstride-nc-data-streaming-tf-state"
+    key = "terraform.tfstate"
+    region = "eu-west-2"
+    use_lockfile = true
+  }
 }
 
 # Configure the AWS Provider
 provider "aws" {
-  region = "eu-west-2"
+  region = var.aws_region
 }
+
