@@ -1,4 +1,4 @@
-from src.local_invoke import main, parse_args
+from src.local_invoke import main, parse_args, _is_valid_date
 import shlex
 import pytest
 
@@ -8,7 +8,7 @@ class TestParseArgs:
         assert isinstance(parse_args(shlex.split("-q q -ref ref")), dict)
 
     def test_returns_none_if_no_args(self):
-        assert parse_args() == None
+        assert parse_args([]) is None
 
     def test_returns_dict_with_query_and_reference_keys(self):
         test_input = shlex.split("-q test -r ref")
@@ -75,4 +75,41 @@ class TestParseArgs:
 
     def test_handles_multiple_word_reference(self):
         test_input = shlex.split("-q query -ref three word ref")
-        assert parse_args(test_input) == None
+        assert parse_args(test_input) is None
+
+    def test_date_not_returned_if_invalid(self):
+        test_input = shlex.split("-q test -ref ref -d 123")
+        output = parse_args(test_input)
+        assert "d" not in list(output.keys())
+
+
+class TestIsValidDate:
+    def test_returns_bool(self):
+        assert isinstance(_is_valid_date(""), bool)
+        assert isinstance(_is_valid_date("2013-01-02"), bool)
+        assert isinstance(_is_valid_date("test"), bool)
+
+    def test_returns_true_for_YYYY_MM_DD_date(self):
+        assert _is_valid_date("2001-01-05")
+        assert _is_valid_date("1997-12-21")
+        assert _is_valid_date("1982-06-28")
+
+    def test_returns_false_for_not_YYYY_MM_DD_string(self):
+        assert not _is_valid_date("123-12-12")
+        assert not _is_valid_date("test")
+        assert not _is_valid_date("2001-23")
+        assert not _is_valid_date("1001-10-10-1")
+
+    def test_returns_false_for_month_or_date_out_of_range(self):
+        assert not _is_valid_date("2001-13-01")
+        assert not _is_valid_date("1997-01-32")
+
+    def test_handles_incorrect_input_format(self):
+        assert not _is_valid_date(234)
+        assert not _is_valid_date(True)
+        assert not _is_valid_date({"test": "dict"})
+
+
+class TestMain:
+    def test_dummy(self):
+        main()
