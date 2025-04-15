@@ -10,7 +10,7 @@ def parse_args(arg_list: list[str] | None = None) -> dict | None:
         arg_list (list[str] | None, optional): List of strings using flags to declare args: -q query, -d date, -ref reference
 
     Returns:
-        _type_: args Dict | None
+        Dict: {"q": query, ("d": date,) "ref": reference} | None
     """
 
     class Parser(argparse.ArgumentParser):
@@ -43,6 +43,50 @@ def _is_valid_date(date: str) -> bool:
         return bool(datetime.strptime(date, "%Y-%m-%d"))
     except (ValueError, TypeError):
         return False
+
+
+def request_args() -> dict:
+    """request args through CLI
+
+    Returns:
+        dict: {"q": query, ("d": date,) "ref": reference}
+    """
+    query = input("Enter search query: ")
+    print(f"Query: {query}")
+
+    date = None
+    if input("Enter date from? (y/n): ") == "y":
+        date = input("Enter date (YYYY-MM-DD): ")
+        if not _is_valid_date(date):
+            date = input("Please try again (YYYY-MM-DD): ")
+
+    if _is_valid_date(date):
+        print(f"Date: {date}")
+    else:
+        print("Invalid date. Will not be included")
+        date = None
+
+    ref = input("Enter one word reference: ")
+    if " " in ref:
+        ref = _spaces_replaced(ref)
+    print(f"Reference: {ref}")
+
+    args = {"q": query, "ref": ref}
+
+    if date:
+        args["d"] = date
+
+    return args
+
+
+def _spaces_replaced(string):
+    output = ""
+    for i in range(len(string)):
+        if string[i] == " ":
+            output += "_"
+        else:
+            output += string[i]
+    return output
 
 
 def main():
