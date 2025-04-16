@@ -4,10 +4,12 @@ from src.local_invoke import (
     _is_valid_date,
     request_args,
     _spaces_replaced,
+    invoke_lambda,
 )
-from unittest.mock import patch
+from unittest.mock import patch, Mock
 import shlex
 import pytest
+import os
 
 
 class TestParseArgs:
@@ -233,6 +235,119 @@ class TestSpacesReplaced:
         assert _spaces_replaced("a b c d e") == "a_b_c_d_e"
 
 
+class TestInvokeLambda:
+    def test_returns_response_dict(self, aws_credentials, args):
+        mock_lambda_client = Mock()
+        mock_lambda_client.invoke.return_value = {"statusCode": 200}
+        output = invoke_lambda(mock_lambda_client, "test", args)
+        assert isinstance(output, dict)
+        assert output == {"statusCode": 200}
+
+    # create mock lambda function? or just mock response
+    # assert lambda called?
+    # use moto to check lambda call is properly formed?
+    def test_lambda_invoked(self, aws_credentials, args):
+        mock_lambda_client = Mock()
+        invoke_lambda(mock_lambda_client, "test", args)
+        assert mock_lambda_client.invoke.call_args.kwargs.get("FunctionName") == "test"
+        assert list(mock_lambda_client.invoke.call_args.kwargs.keys()) == [
+            "FunctionName",
+            "InvocationType",
+            "LogType",
+            "ClientContext",
+            "Payload",
+            "Qualifier",
+        ]
+
+
 class TestMain:
     def test_dummy(self):
         main()
+
+
+@pytest.fixture(scope="function")
+def args():
+    return {"q": "test", "d": "1997-01-01", "ref": "ref"}
+
+
+@pytest.fixture(scope="function")
+def aws_credentials():
+    """Mocked AWS Credentials for moto."""
+    os.environ["AWS_ACCESS_KEY_ID"] = "testing"
+    os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
+    os.environ["AWS_SECURITY_TOKEN"] = "testing"
+    os.environ["AWS_SESSION_TOKEN"] = "testing"
+    os.environ["AWS_DEFAULT_REGION"] = "us-east-1"
+
+
+# @pytest.fixture(scope="function")
+# def aws_lambda(aws_credentials):
+#     """
+#     Return a mocked Lambda client
+#     """
+#     with mock_aws():
+#         iam_client = boto3.client('iam')
+#         role_name = 'test_lambda_role'
+#         policy = iam_client.create_policy(
+#         PolicyName='AWSLambdaBasicExecutionRole',
+#         PolicyDocument='''{
+#             "Version": "2012-10-17",
+#             "Statement": [
+#                 {
+#                     "Effect": "Allow",
+#                     "Action": "logs:CreateLogGroup",
+#                     "Resource": "*"
+#                 }
+#             ]
+#         }'''
+#         )
+#         assume_role_policy = {
+#             "Version": "2012-10-17",
+#             "Statement": [
+#                 {
+#                 "Effect": "Allow",
+#                 "Principal": {
+#                     "Service": "lambda.amazonaws.com"
+#                 },
+#                 "Action": "sts:AssumeRole"
+#                 }
+#                 ]
+#             }
+#         response = iam_client.create_role(
+#             RoleName=role_name,
+#             AssumeRolePolicyDocument=json.dumps(assume_role_policy),
+#             Description='IAM role for Lambda function execution'
+#             )
+#         role_arn = response['Role']['Arn']
+
+#         iam_client.attach_role_policy(
+#             RoleName=role_name,
+#             PolicyArn=policy['Policy']['Arn']
+#             )
+
+
+#         client = boto3.client("lambda")
+#         client.create_function(
+#             FunctionName="test_lambda",
+#             Runtime="python3.8",
+#             Role=role_arn,
+#             Handler="lambda_function.lambda_handler",
+#             Code={"ZipFile": create_lambda_zip()},
+#             Description="Test Lambda function",
+#             Timeout=3,
+#             MemorySize=128,
+#             Publish=True,
+#             )
+#         yield client
+
+# def create_lambda_zip():
+#     code = '''
+# def lambda_handler(event, context):
+#     print(event)
+#     return {"statusCode": 200, "body": "Hello from Lambda"}
+# '''
+#     zip_buffer = io.BytesIO()
+#     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+#         zip_file.writestr("lambda_function.py", code)
+#     zip_buffer.seek(0)
+#     return zip_buffer.read()

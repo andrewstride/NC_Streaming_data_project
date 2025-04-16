@@ -1,5 +1,6 @@
 import argparse
 import sys
+import json
 from datetime import datetime
 
 
@@ -89,14 +90,39 @@ def _spaces_replaced(string):
     return output
 
 
+def invoke_lambda(lambda_client, lambda_id: str, args: dict) -> dict:
+    """Invoke lambda function and return response
+
+    Args:
+        lambda_id (str): Lambda name or ARN
+        args (dict): {'q': query, ('d': date,) 'ref': ref}
+
+    Returns:
+        dict: response
+    """
+
+    response = lambda_client.invoke(
+        FunctionName=lambda_id,
+        InvocationType="RequestResponse",
+        LogType="Tail",
+        ClientContext="string",
+        Payload=json.dumps(args),
+        Qualifier="string",
+    )
+    return response
+
+
 def main():
-    # parse given args / handle malformed request/arg
     # Invoke Lambda with JSON event
     # Handle response
     # print details of results found & added to queue
     # OR
     # details of error?
-    parse_args()
+    args = parse_args()
+    if not args:
+        args = request_args()
+    print(args)
+
 
 
 if __name__ == "__main__":
