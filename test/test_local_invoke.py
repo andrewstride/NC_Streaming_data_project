@@ -5,6 +5,7 @@ from src.local_invoke import (
     request_args,
     _spaces_replaced,
     invoke_lambda,
+    _lambda_name
 )
 from unittest.mock import patch, Mock
 import shlex
@@ -259,10 +260,23 @@ class TestInvokeLambda:
             "Qualifier",
         ]
 
+class TestLambdaName:
+    @patch('src.local_invoke.load_dotenv')
+    def test_loads_name_from_env(self, mock_load, monkeypatch):
+        monkeypatch.setenv('LAMBDA_NAME', 'test_name')
+        assert _lambda_name() == 'test_name'
+        assert mock_load.call_count == 1
 
-class TestMain:
-    def test_dummy(self):
-        main()
+    @patch('src.local_invoke.load_dotenv')
+    def test_raises_error_if_not_found(self, mock_load):
+        with pytest.raises(EnvironmentError) as e:
+            _lambda_name()
+        assert str(e.value) == "LAMBDA_NAME retrieval from .env unsuccessful"
+    
+
+# class TestMain:
+#     def test_dummy(self):
+#         main()
 
 
 @pytest.fixture(scope="function")

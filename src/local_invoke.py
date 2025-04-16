@@ -1,7 +1,9 @@
 import argparse
 import sys
 import json
+import os
 from datetime import datetime
+from dotenv import load_dotenv
 
 
 def parse_args(arg_list: list[str] | None = None) -> dict | None:
@@ -111,6 +113,12 @@ def invoke_lambda(lambda_client, lambda_id: str, args: dict) -> dict:
     )
     return response
 
+def _lambda_name():
+    load_dotenv()
+    name = os.environ.get('LAMBDA_NAME')
+    if not name:
+        raise EnvironmentError("LAMBDA_NAME retrieval from .env unsuccessful")
+    return name
 
 def main():
     # Invoke Lambda with JSON event
