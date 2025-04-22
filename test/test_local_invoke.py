@@ -255,9 +255,7 @@ class TestInvokeLambda:
             "FunctionName",
             "InvocationType",
             "LogType",
-            "ClientContext",
             "Payload",
-            "Qualifier",
         ]
 
 class TestLambdaName:
