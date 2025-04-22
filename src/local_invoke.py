@@ -2,6 +2,7 @@ import argparse
 import sys
 import json
 import os
+import boto3
 from datetime import datetime
 from dotenv import load_dotenv
 
@@ -92,7 +93,7 @@ def _spaces_replaced(string):
     return output
 
 
-def invoke_lambda(lambda_client, lambda_id: str, args: dict) -> dict:
+def invoke_lambda(lambda_client: boto3.client, lambda_id: str, args: dict) -> dict:
     """Invoke lambda function and return response
 
     Args:
@@ -107,9 +108,7 @@ def invoke_lambda(lambda_client, lambda_id: str, args: dict) -> dict:
         FunctionName=lambda_id,
         InvocationType="RequestResponse",
         LogType="Tail",
-        ClientContext="string",
-        Payload=json.dumps(args),
-        Qualifier="string",
+        Payload=json.dumps(args)
     )
     return response
 
@@ -121,15 +120,16 @@ def _lambda_name():
     return name
 
 def main():
-    # Invoke Lambda with JSON event
-    # Handle response
     # print details of results found & added to queue
     # OR
     # details of error?
     args = parse_args()
     if not args:
         args = request_args()
-    print(args)
+    lambda_client = boto3.client('lambda')
+    response = invoke_lambda(lambda_client, _lambda_name(), args)
+    print(response)
+    # TODO: Handle response - details of results added to queue / error
 
 
 
