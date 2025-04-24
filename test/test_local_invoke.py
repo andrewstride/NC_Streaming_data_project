@@ -1,11 +1,10 @@
 from src.local_invoke import (
-    main,
     parse_args,
     _is_valid_date,
     request_args,
     _spaces_replaced,
     invoke_lambda,
-    _lambda_name
+    _lambda_name,
 )
 from unittest.mock import patch, Mock
 import shlex
@@ -244,9 +243,6 @@ class TestInvokeLambda:
         assert isinstance(output, dict)
         assert output == {"statusCode": 200}
 
-    # create mock lambda function? or just mock response
-    # assert lambda called?
-    # use moto to check lambda call is properly formed?
     def test_lambda_invoked(self, aws_credentials, args):
         mock_lambda_client = Mock()
         invoke_lambda(mock_lambda_client, "test", args)
@@ -258,19 +254,20 @@ class TestInvokeLambda:
             "Payload",
         ]
 
+
 class TestLambdaName:
-    @patch('src.local_invoke.load_dotenv')
+    @patch("src.local_invoke.load_dotenv")
     def test_loads_name_from_env(self, mock_load, monkeypatch):
-        monkeypatch.setenv('LAMBDA_NAME', 'test_name')
-        assert _lambda_name() == 'test_name'
+        monkeypatch.setenv("LAMBDA_NAME", "test_name")
+        assert _lambda_name() == "test_name"
         assert mock_load.call_count == 1
 
-    @patch('src.local_invoke.load_dotenv')
+    @patch("src.local_invoke.load_dotenv")
     def test_raises_error_if_not_found(self, mock_load):
         with pytest.raises(EnvironmentError) as e:
             _lambda_name()
         assert str(e.value) == "LAMBDA_NAME retrieval from .env unsuccessful"
-    
+
 
 # class TestMain:
 #     def test_dummy(self):
