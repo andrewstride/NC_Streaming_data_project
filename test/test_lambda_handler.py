@@ -1,10 +1,61 @@
-from src.lambda_function import lambda_handler, _env_variables, _build_url, _parse_results, BASE_URL
-from unittest.mock import patch
+from src.lambda_function import lambda_handler, _env_variables, _build_url, _parse_results, _fetch_data, BASE_URL
+from unittest.mock import patch, Mock
 import pytest
 import re
 import requests
 import logging
 import json
+
+class TestHandler:
+    @patch("src.lambda_function.requests")
+    def test_returns_400_for_malformed_event(self, mock_requests):
+        output = lambda_handler({}, {})
+        expected = {
+            "statusCode": 400,
+            "error": "Bad request",
+            "message": "Missing required event key: q - 'q' and 'ref' required",
+        }
+        assert output == expected
+
+    @patch("src.lambda_function.requests")
+    def test_logs_error_for_missing_q_or_ref_keys(self, mock_requests, caplog):
+        with caplog.at_level(logging.ERROR):
+            lambda_handler({"ref": "test"}, {})
+            assert any("Missing required event key: q" in m for m in caplog.messages)
+
+            caplog.clear()
+
+            lambda_handler({"q": "test"}, {})
+            assert any("Missing required event key: ref" in m for m in caplog.messages)
+
+    @patch("src.lambda_function.requests")
+    def test_logs_event_at_info_level(self, mock_requests, caplog, event_no_date, event_with_date):
+        with caplog.at_level(logging.INFO):
+            lambda_handler({}, {})
+            assert any("Invoked with event: {}" in m for m in caplog.messages)
+
+            caplog.clear()
+
+            lambda_handler(event_no_date, {})
+            assert any(
+                "Invoked with event: {" in m
+                and "'q': 'test%20query'" in m
+                and "'ref': 'test_ref'" in m
+                for m in caplog.messages
+            )
+
+            caplog.clear()
+
+            lambda_handler(event_with_date, {})
+            assert any(
+                "Invoked with event: {" in m
+                and "'q': 'test%20query'" in m
+                and "'ref': 'test_ref'}" in m
+                and "'d': '1997-01-01'" in m
+                for m in caplog.messages
+            )
+
+    
 
 
 class TestEnvVariablesUtil:
@@ -65,62 +116,13 @@ class TestBuildUrl:
         assert re.match(pattern, url)
 
 
-class TestHandler:
-    @patch("src.lambda_function.requests")
-    def test_returns_400_for_malformed_event(self, mock_requests):
-        output = lambda_handler({}, {})
-        expected = {
-            "statusCode": 400,
-            "error": "Bad request",
-            "message": "Missing required event key: q - 'q' and 'ref' required",
-        }
-        assert output == expected
-
-    @patch("src.lambda_function.requests")
-    def test_logs_error_for_missing_q_or_ref_keys(self, mock_requests, caplog):
-        with caplog.at_level(logging.ERROR):
-            lambda_handler({"ref": "test"}, {})
-            assert any("Missing required event key: q" in m for m in caplog.messages)
-
-            caplog.clear()
-
-            lambda_handler({"q": "test"}, {})
-            assert any("Missing required event key: ref" in m for m in caplog.messages)
-
-    @patch("src.lambda_function.requests")
-    def test_logs_event_at_info_level(self, mock_requests, caplog):
-        with caplog.at_level(logging.INFO):
-            lambda_handler({}, {})
-            assert any("Invoked with event: {}" in m for m in caplog.messages)
-
-            caplog.clear()
-
-            lambda_handler({"q": "test", "ref": "test"}, {})
-            assert any(
-                "Invoked with event: {" in m
-                and "'q': 'test'" in m
-                and "'ref': 'test'" in m
-                for m in caplog.messages
-            )
-
-            caplog.clear()
-
-            lambda_handler({"q": "test", "d": "2001-05-06", "ref": "test"}, {})
-            assert any(
-                "Invoked with event: {" in m
-                and "'q': 'test'" in m
-                and "'ref': 'test'}" in m
-                and "'d': '2001-05-06'" in m
-                for m in caplog.messages
-            )
-
 class TestParseResults:
-    def test_returns_list(self, api_200_response):
-        results = api_200_response['response']['results']
+    def test_returns_list(self, response_body):
+        results = response_body['response']['results']
         assert isinstance(_parse_results(results), list)
 
-    def test_returns_mvp_keys(self, api_200_response):
-        results = api_200_response['response']['results']
+    def test_returns_mvp_keys(self, response_body):
+        results = response_body['response']['results']
         output = _parse_results(results)
         expected_keys = ["webTitle", "webUrl", "webPublicationDate"]
         assert len(output) > 0
@@ -128,8 +130,8 @@ class TestParseResults:
             for key in expected_keys:
                 assert key in list(result.keys())
 
-    def test_unwanted_keys_not_returned(self, api_200_response):
-        results = api_200_response['response']['results']
+    def test_unwanted_keys_not_returned(self, response_body):
+        results = response_body['response']['results']
         output = _parse_results(results)
         unwanted_keys = ['id', 'type', 'sectionId', 'sectionName', 'apiUrl', 'isHosted', 'pillarId', 'pillarName']
         assert len(output) > 0
@@ -137,7 +139,29 @@ class TestParseResults:
             for key in unwanted_keys:
                 assert key not in list(result.keys())
             
+class TestFetchData:
+    @patch("src.lambda_function.requests")
+    def test_api_called_with_url(self, mock_requests):
+        _fetch_data("test_url")
+        called_with = mock_requests.get.call_args_list[0][0][0]
+        assert called_with == "test_url"
 
+    @patch("src.lambda_function.requests")
+    def test_returns_list(self, mock_requests, api_200_response):
+        mock_requests.get.return_value = api_200_response
+        assert isinstance(_fetch_data("test_url"), list)
+
+    @patch("src.lambda_function.requests")
+    def test_handles_bad_response(self, mock_requests, bad_api_response):
+        mock_requests.get.return_value = bad_api_response
+        with pytest.raises(Exception) as e:
+            _fetch_data("test_url")
+
+    # test logs error
+    # handles timeout
+    # handles RequestException
+    # handles KeyError
+    # logs
 
 
 @pytest.fixture(scope="function")
@@ -150,14 +174,22 @@ def event_with_date():
     return {"q": "test%20query", "d": "1997-01-01", "ref": "test_ref"}
 
 @pytest.fixture(scope="function")
-def api_200_response():
+def api_200_response(response_body):
+    response = Mock(spec=requests.Response)
+    response.status_code = 200
+    response.ok = True
+    response.json.return_value = response_body
+    return response
+
+@pytest.fixture(scope="function")
+def response_body():
     return json.loads("""{
 	"response": {
 		"status": "ok",
 		"userTier": "developer",
 		"total": 178192,
 		"startIndex": 1,
-		"pageSize": 10,
+		"pageSize": 1,
 		"currentPage": 1,
 		"pages": 17820,
 		"orderBy": "relevance",
@@ -174,124 +206,15 @@ def api_200_response():
 				"isHosted": false,
 				"pillarId": "pillar/news",
 				"pillarName": "News"
-			},
-			{
-				"id": "society/2025/apr/12/blood-test-could-detect-parkinsons-disease-before-symptoms-emerge",
-				"type": "article",
-				"sectionId": "society",
-				"sectionName": "Society",
-				"webPublicationDate": "2025-04-12T16:33:57Z",
-				"webTitle": "Blood test could detect Parkinson’s disease before symptoms emerge",
-				"webUrl": "https://www.theguardian.com/society/2025/apr/12/blood-test-could-detect-parkinsons-disease-before-symptoms-emerge",
-				"apiUrl": "https://content.guardianapis.com/society/2025/apr/12/blood-test-could-detect-parkinsons-disease-before-symptoms-emerge",
-				"isHosted": false,
-				"pillarId": "pillar/news",
-				"pillarName": "News"
-			},
-			{
-				"id": "society/2024/dec/17/prisons-crisis-will-test-labours-mettle",
-				"type": "article",
-				"sectionId": "society",
-				"sectionName": "Society",
-				"webPublicationDate": "2024-12-17T17:27:21Z",
-				"webTitle": "Prisons crisis will test Labour’s mettle | Letters",
-				"webUrl": "https://www.theguardian.com/society/2024/dec/17/prisons-crisis-will-test-labours-mettle",
-				"apiUrl": "https://content.guardianapis.com/society/2024/dec/17/prisons-crisis-will-test-labours-mettle",
-				"isHosted": false,
-				"pillarId": "pillar/news",
-				"pillarName": "News"
-			},
-			{
-				"id": "business/2025/mar/21/borrowing-overshoot-will-test-rachel-reeves-resolve-on-tax-rises",
-				"type": "article",
-				"sectionId": "business",
-				"sectionName": "Business",
-				"webPublicationDate": "2025-03-21T09:20:28Z",
-				"webTitle": "Borrowing overshoot will test Rachel Reeves’s resolve on tax rises",
-				"webUrl": "https://www.theguardian.com/business/2025/mar/21/borrowing-overshoot-will-test-rachel-reeves-resolve-on-tax-rises",
-				"apiUrl": "https://content.guardianapis.com/business/2025/mar/21/borrowing-overshoot-will-test-rachel-reeves-resolve-on-tax-rises",
-				"isHosted": false,
-				"pillarId": "pillar/news",
-				"pillarName": "News"
-			},
-			{
-				"id": "sport/2025/mar/09/devastated-england-wait-for-test-results-after-ollie-lawrence-injury",
-				"type": "article",
-				"sectionId": "sport",
-				"sectionName": "Sport",
-				"webPublicationDate": "2025-03-09T19:44:06Z",
-				"webTitle": "‘Devastated’ England wait for test results after Ollie Lawrence injury",
-				"webUrl": "https://www.theguardian.com/sport/2025/mar/09/devastated-england-wait-for-test-results-after-ollie-lawrence-injury",
-				"apiUrl": "https://content.guardianapis.com/sport/2025/mar/09/devastated-england-wait-for-test-results-after-ollie-lawrence-injury",
-				"isHosted": false,
-				"pillarId": "pillar/sport",
-				"pillarName": "Sport"
-			},
-			{
-				"id": "sport/2025/mar/12/rugby-union-six-nations-england-wales-steve-borthwick-selection",
-				"type": "article",
-				"sectionId": "sport",
-				"sectionName": "Sport",
-				"webPublicationDate": "2025-03-12T20:23:44Z",
-				"webTitle": "Borthwick deserves credit after bold selection for England’s Wales test",
-				"webUrl": "https://www.theguardian.com/sport/2025/mar/12/rugby-union-six-nations-england-wales-steve-borthwick-selection",
-				"apiUrl": "https://content.guardianapis.com/sport/2025/mar/12/rugby-union-six-nations-england-wales-steve-borthwick-selection",
-				"isHosted": false,
-				"pillarId": "pillar/sport",
-				"pillarName": "Sport"
-			},
-			{
-				"id": "society/2025/mar/31/new-blood-test-checks-alzheimers-assesses-progression",
-				"type": "article",
-				"sectionId": "society",
-				"sectionName": "Society",
-				"webPublicationDate": "2025-03-31T15:00:51Z",
-				"webTitle": "New blood test checks for Alzheimer’s and assesses progression, study says",
-				"webUrl": "https://www.theguardian.com/society/2025/mar/31/new-blood-test-checks-alzheimers-assesses-progression",
-				"apiUrl": "https://content.guardianapis.com/society/2025/mar/31/new-blood-test-checks-alzheimers-assesses-progression",
-				"isHosted": false,
-				"pillarId": "pillar/news",
-				"pillarName": "News"
-			},
-			{
-				"id": "football/2025/mar/30/english-football-mascots-quiz",
-				"type": "article",
-				"sectionId": "football",
-				"sectionName": "Football",
-				"webPublicationDate": "2025-03-30T10:00:17Z",
-				"webTitle": "Quiz: test your knowledge of English football’s weird and wonderful mascots",
-				"webUrl": "https://www.theguardian.com/football/2025/mar/30/english-football-mascots-quiz",
-				"apiUrl": "https://content.guardianapis.com/football/2025/mar/30/english-football-mascots-quiz",
-				"isHosted": false,
-				"pillarId": "pillar/sport",
-				"pillarName": "Sport"
-			},
-			{
-				"id": "sport/2025/apr/21/cricket-wisden-world-test-championship-india-south-africa-graham-thorpe",
-				"type": "article",
-				"sectionId": "sport",
-				"sectionName": "Sport",
-				"webPublicationDate": "2025-04-21T21:30:47Z",
-				"webTitle": "Wisden calls World Test Championship a ‘shambles’ and makes case for reform",
-				"webUrl": "https://www.theguardian.com/sport/2025/apr/21/cricket-wisden-world-test-championship-india-south-africa-graham-thorpe",
-				"apiUrl": "https://content.guardianapis.com/sport/2025/apr/21/cricket-wisden-world-test-championship-india-south-africa-graham-thorpe",
-				"isHosted": false,
-				"pillarId": "pillar/sport",
-				"pillarName": "Sport"
-			},
-			{
-				"id": "sport/2025/mar/14/rory-mcilroy-relishing-tougher-test-as-storms-head-for-players-championship",
-				"type": "article",
-				"sectionId": "sport",
-				"sectionName": "Sport",
-				"webPublicationDate": "2025-03-14T18:59:51Z",
-				"webTitle": "Rory McIlroy relishing tougher test as storms head for Players Championship",
-				"webUrl": "https://www.theguardian.com/sport/2025/mar/14/rory-mcilroy-relishing-tougher-test-as-storms-head-for-players-championship",
-				"apiUrl": "https://content.guardianapis.com/sport/2025/mar/14/rory-mcilroy-relishing-tougher-test-as-storms-head-for-players-championship",
-				"isHosted": false,
-				"pillarId": "pillar/sport",
-				"pillarName": "Sport"
 			}
 		]
 	}
 }""")
+
+@pytest.fixture(scope="function")
+def bad_api_response():
+    response = Mock(spec=requests.Response)
+    response.status_code = 401
+    response.ok = False
+    response.json.return_value = {"message": "Unauthorized"}
+    return response

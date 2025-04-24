@@ -39,10 +39,9 @@ def lambda_handler(event, context):
 
     # Build URL
     url = _build_url(query, api_key, date)
-
+    logger.info("URL built, attempting API call")
     # Collect response from Guardian API
-    # response = requests.get(url)
-    # print(response)
+    
 
     # For each result:
     # Process into dict:
@@ -98,3 +97,12 @@ def _parse_results(results):
             parsed[key] = result[key]
         output.append(parsed)
     return output
+
+def _fetch_data(url):
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+        data = response.json()['response']['results']
+        return data
+    except requests.exceptions.HTTPError as e:
+        raise e
