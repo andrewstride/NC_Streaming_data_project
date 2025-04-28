@@ -41,7 +41,7 @@ def lambda_handler(event, context):
     url = _build_url(query, api_key, date)
     logger.info("URL built, attempting API call")
     # Collect response from Guardian API
-    
+    data = _fetch_data(url)
 
     # For each result:
     # Process into dict:
@@ -88,6 +88,22 @@ def _build_url(query, api_key, date=None):
         url += f"&from-date={date}"
     return url + f"&api-key={api_key}"
 
+def _fetch_data(url):
+    try:
+        response = requests.get(url, timeout=5)
+        response.raise_for_status()
+        data = response.json()['response']['results']
+        return data
+    except requests.exceptions.HTTPError as e:
+        logger.error("HTTP Error while fetching data: %s", str(e))
+        raise
+    except requests.exceptions.Timeout as e:
+        logger.error("Timeout occurred while fetching data: %s", str(e))
+        raise
+    except Exception as e:
+        logger.error("Error while fetching data: %s", f"{e.__class__}: {e}")
+        raise
+    
 def _parse_results(results):
     output = []
     keys = ["webTitle", "webUrl", "webPublicationDate"]
@@ -97,12 +113,3 @@ def _parse_results(results):
             parsed[key] = result[key]
         output.append(parsed)
     return output
-
-def _fetch_data(url):
-    try:
-        response = requests.get(url)
-        response.raise_for_status()
-        data = response.json()['response']['results']
-        return data
-    except requests.exceptions.HTTPError as e:
-        raise e

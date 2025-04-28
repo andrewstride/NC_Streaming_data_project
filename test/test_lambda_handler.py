@@ -151,17 +151,36 @@ class TestFetchData:
         mock_requests.get.return_value = api_200_response
         assert isinstance(_fetch_data("test_url"), list)
 
-    @patch("src.lambda_function.requests")
-    def test_handles_bad_response(self, mock_requests, bad_api_response):
-        mock_requests.get.return_value = bad_api_response
-        with pytest.raises(Exception) as e:
-            _fetch_data("test_url")
+    @patch("src.lambda_function.requests.get")
+    def test_handles_malformed_response(self, mock_requests, caplog, api_200_malformed_payload):
+        mock_requests.return_value = api_200_malformed_payload
+        with caplog.at_level(logging.ERROR):
+            with pytest.raises(KeyError) as e:
+                _fetch_data("test_url")
+            assert any("Error while fetching data:" in m
+                       and "KeyError" in m
+                       and "response" in m
+                       for m in caplog.messages)
 
-    # test logs error
-    # handles timeout
-    # handles RequestException
-    # handles KeyError
-    # logs
+    @patch("src.lambda_function.requests.get")
+    def test_logs_error(self, mock_requests, caplog, api_401_response):
+        mock_requests.return_value = api_401_response
+        with caplog.at_level(logging.ERROR):
+            with pytest.raises(requests.exceptions.HTTPError):
+                _fetch_data("test_url")
+            assert any("HTTP Error while fetching data:" in m
+                   and "401 Unauthorized" in m
+                   for m in caplog.messages)
+
+    @patch("src.lambda_function.requests.get")
+    def test_handles_timeout(self, mock_requests, caplog):
+        mock_requests.side_effect = requests.exceptions.Timeout("Request timed out")
+        with caplog.at_level(logging.ERROR):
+            with pytest.raises(requests.exceptions.Timeout):
+                _fetch_data("test_url")
+            assert any("Timeout occurred while fetching data:" in m
+                   and "Request timed out" in m
+                   for m in caplog.messages)
 
 
 @pytest.fixture(scope="function")
@@ -212,9 +231,18 @@ def response_body():
 }""")
 
 @pytest.fixture(scope="function")
-def bad_api_response():
+def api_401_response():
     response = Mock(spec=requests.Response)
     response.status_code = 401
+    response.raise_for_status.side_effect = requests.exceptions.HTTPError("401 Unauthorized")
     response.ok = False
     response.json.return_value = {"message": "Unauthorized"}
+    return response
+
+@pytest.fixture(scope="function")
+def api_200_malformed_payload():
+    response = Mock(spec=requests.Response)
+    response.status_code = 200
+    response.ok = True
+    response.json.return_value = {"message": "test"}
     return response
