@@ -93,6 +93,7 @@ def _fetch_data(url):
         response = requests.get(url, timeout=5)
         response.raise_for_status()
         data = response.json()['response']['results']
+        logger.info("%s result(s) collected", str(len(data)))
         return data
     except requests.exceptions.HTTPError as e:
         logger.error("HTTP Error while fetching data: %s", str(e))

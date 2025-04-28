@@ -151,6 +151,14 @@ class TestFetchData:
         mock_requests.get.return_value = api_200_response
         assert isinstance(_fetch_data("test_url"), list)
 
+    @patch("src.lambda_function.requests")
+    def test_logs_results(self, mock_requests, api_200_response, caplog):
+        mock_requests.get.return_value = api_200_response
+        with caplog.at_level(logging.INFO):
+            _fetch_data("test_url")
+            assert any("1 result(s) collected" in m
+                       for m in caplog.messages)
+
     @patch("src.lambda_function.requests.get")
     def test_handles_malformed_response(self, mock_requests, caplog, api_200_malformed_payload):
         mock_requests.return_value = api_200_malformed_payload
