@@ -113,7 +113,7 @@ def invoke_lambda(lambda_client: boto3.client, lambda_id: str, args: dict) -> di
     return response
 
 
-def _lambda_name():
+def _lambda_name() -> str:
     load_dotenv()
     name = os.environ.get("LAMBDA_NAME")
     if not name:
