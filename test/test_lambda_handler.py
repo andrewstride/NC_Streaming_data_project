@@ -447,7 +447,6 @@ def message():
 @pytest.fixture(scope="function")
 def mock_sqs_moto_and_url_in_env(monkeypatch):
     with mock_aws():
-        print(os.environ.get("AWS_REGION"))
         conn = boto3.client("sqs")
         response = conn.create_queue(
             QueueName="test_queue.fifo",
