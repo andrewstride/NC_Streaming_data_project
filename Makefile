@@ -44,7 +44,7 @@ lambda-layer: requirements
 	$(UV) export --frozen --only-group lambda --no-hashes -o requirements.txt
 	mkdir -p layer/python
 	$(UV) pip install -r requirements.txt --target ./layer/python
-	cd layer && zip -r ../layer.zip python
+	cd layer && zip -r -X ../layer.zip python
 	rm -rf layer/
 	rm requirements.txt
 
