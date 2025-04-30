@@ -74,9 +74,9 @@ output "lambda_function_arn" {
 }
 
 resource "aws_lambda_layer_version" "lambda_layer" {
-  filename   = "layer.zip"
+  filename   = "${path.module}/../layer.zip"
   layer_name = "lambda_layer_name"
 
   compatible_runtimes = ["python3.12"]
-  source_code_hash    = filebase64sha256("layer.zip")
+  source_code_hash    = filebase64sha256("${path.module}/../layer.zip")
 }
