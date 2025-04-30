@@ -294,6 +294,17 @@ class TestSendToSQS:
                        for m in caplog.messages)
         assert not output
 
+    def test_message_sent_to_queue(self, message, mock_sqs_moto_and_url_in_env):
+        sqs_url = os.environ.get("sqs_queue_url")
+        assert os.environ.get("AWS_ACCESS_KEY_ID") == "FOOBARKEY"
+        sqs_client = mock_sqs_moto_and_url_in_env
+        output = _send_to_SQS(message, sqs_client, sqs_url)
+        assert output
+        response = sqs_client.receive_message(
+            QueueUrl = sqs_url
+        )
+        assert response['Messages'][0]['Body'] == json.dumps(message)
+
 
 @pytest.fixture(scope="function")
 def event_no_date():
