@@ -46,27 +46,23 @@ def lambda_handler(event, context):
     # Collect response from Guardian API
     data = _fetch_data(url)
     # Process results into required format
-    message_list = _parse_results(data)
+    message_list = _parse_results(data, reference)
     # Send messages to SQS queue
-    sqs_client = boto3.client('sqs')
-    # for message in message_list:
-    #     response = _send_to_SQS(message, sqs_client, sqs_queue_url)
-    #     if response:
+    sqs_client = _get_sqs_client()
+    output = {
+        'statusCode': 200,
+        'messagesSent': 0,
+        'messagesFailed': 0
+    }
+    for message in message_list:
+        response = _send_to_SQS(message, sqs_client, sqs_queue_url)
+        if response:
+            output["messagesSent"] += 1
+        else:
+            output["messagesFailed"] += 1
 
-
-
-    # return {
-    #     'MessagesSent': x,
-    #       'MessagesFailed': x,
-    #     'messages': [
-    #         {
-    #             "contents of each message": "foo"
-    #         },
-    #         {
-    #             "contents of each message": "bar"
-    #         }
-    #     ]
-    # }
+    output['messages'] = message_list
+    return output
 
 
 def _env_variables():
@@ -106,7 +102,7 @@ def _fetch_data(url: str) -> list:
         raise
     
 def _parse_results(results: list[dict], reference: str) -> list[dict]:
-    """_summary_
+    """Parse results into format for SQS
 
     Args:
         results (list[dict])
@@ -124,6 +120,9 @@ def _parse_results(results: list[dict], reference: str) -> list[dict]:
         parsed["reference"] = reference
         output.append(parsed)
     return output
+
+def _get_sqs_client():
+    return boto3.client('sqs')
 
 def _send_to_SQS(message: dict, sqs_client: boto3.client, sqs_queue_url: str) -> bool:
     """Sends message to SQS queue
@@ -149,3 +148,4 @@ def _send_to_SQS(message: dict, sqs_client: boto3.client, sqs_queue_url: str) ->
     except Exception as e:
         logger.exception("Unexpected error when sending message")
         return False
+    

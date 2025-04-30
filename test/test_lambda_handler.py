@@ -1,11 +1,14 @@
-from src.lambda_function import lambda_handler, _env_variables, _build_url, _parse_results, _fetch_data, _send_to_SQS, BASE_URL
+from src.lambda_function import lambda_handler, _env_variables, _build_url, _parse_results, _fetch_data, _get_sqs_client, _send_to_SQS, BASE_URL
 from unittest.mock import patch, Mock
 from botocore.exceptions import ClientError
+from moto import mock_aws
 import pytest
 import re
 import requests
 import logging
 import json
+import boto3
+import os
 
 class TestHandler:
     @patch("src.lambda_function.requests")
@@ -19,15 +22,24 @@ class TestHandler:
         assert output == expected
 
     @patch("src.lambda_function.requests")
-    def test_logs_error_for_missing_q_or_ref_keys(self, mock_requests, caplog):
+    def test_logs_error_for_missing_q_or_ref_event_keys_and_returns_error(self, mock_requests, caplog):
         with caplog.at_level(logging.ERROR):
-            lambda_handler({"ref": "test"}, {})
+            response = lambda_handler({"ref": "test"}, {})
             assert any("Missing required event key: q" in m for m in caplog.messages)
-
+            assert response == {
+            "statusCode": 400,
+            "error": "Bad request",
+            "message": f"Missing required event key: q - 'q' and 'ref' required",
+        }
             caplog.clear()
 
-            lambda_handler({"q": "test"}, {})
+            response = lambda_handler({"q": "test"}, {})
             assert any("Missing required event key: ref" in m for m in caplog.messages)
+            assert response == {
+            "statusCode": 400,
+            "error": "Bad request",
+            "message": f"Missing required event key: ref - 'q' and 'ref' required",
+        }
 
     @patch("src.lambda_function.requests")
     def test_logs_event_at_info_level(self, mock_requests, caplog, event_no_date, event_with_date):
@@ -56,7 +68,51 @@ class TestHandler:
                 for m in caplog.messages
             )
 
-    
+    @patch("src.lambda_function.requests.get")
+    def test_logs_progress_and_returns_dict_with_message_log(self,
+                                            mock_requests,
+                                            event_with_date,
+                                            monkeypatch,
+                                            api_200_response,
+                                            mock_sqs_moto_and_url_in_env,
+                                            caplog
+                                            ):
+        mock_requests.return_value = api_200_response
+        monkeypatch.setenv("api_key", "test_key")
+        assert os.environ.get("sqs_queue_url") == "https://sqs.eu-west-2.amazonaws.com/123456789012/test_queue"
+        assert os.environ.get("AWS_ACCESS_KEY_ID") == "FOOBARKEY"
+        with caplog.at_level(logging.INFO):
+            response = lambda_handler(event_with_date, {})
+            assert any("Attempting to retrieve environment variables" in m
+                       or "Environment variables retrieved" in m
+                       or "URL built, attempting API call" in m
+                       or "1 result(s) collected" in m
+                       or "Message sent. ID:" in m
+                for m in caplog.messages)
+        assert response == {
+        'statusCode': 200,
+        'messagesSent': 1,
+        'messagesFailed': 0,
+        'messages': [{'webTitle': 'At-home saliva test for prostate cancer better than blood test, study suggests', 'webUrl': 'https://www.theguardian.com/society/2025/apr/09/at-home-saliva-test-for-prostate-cancer-better-than-blood-test-study-suggests', 'webPublicationDate': '2025-04-09T21:00:09Z', 'reference': 'test_ref'}]
+        }
+
+    @patch("src.lambda_function._send_to_SQS")
+    @patch("src.lambda_function.requests.get")
+    def test_returns_dict_with_failed_message_log(self,
+                                            mock_requests,
+                                            mock_send_to_SQS,
+                                            event_with_date,
+                                            monkeypatch,
+                                            api_200_response,
+                                            mock_sqs_moto_and_url_in_env
+                                            ):
+        mock_requests.return_value = api_200_response
+        monkeypatch.setenv("api_key", "test_key")
+        assert os.environ.get("sqs_queue_url") == "https://sqs.eu-west-2.amazonaws.com/123456789012/test_queue"
+        assert os.environ.get("AWS_ACCESS_KEY_ID") == "FOOBARKEY"
+        mock_send_to_SQS.return_value = False
+        response = lambda_handler(event_with_date, {})
+        assert response['messagesFailed'] == 1
 
 
 class TestEnvVariablesUtil:
@@ -191,6 +247,13 @@ class TestFetchData:
                    and "Request timed out" in m
                    for m in caplog.messages)
 
+
+class TestGetSqsClient:
+    @mock_aws
+    def test_returns_boto3_client(self):
+            client = _get_sqs_client()
+            assert client.__class__.__name__ == "SQS"
+
 class TestSendToSQS:
     def test_calls_client_with_send_message_url_and_message(self, mock_sqs_client, message):
         _send_to_SQS(message, mock_sqs_client, "test_url")
@@ -315,3 +378,13 @@ def message():
         "WebURL": "test",
         "reference": "test_ref"
     }
+
+@pytest.fixture(scope="function")
+def mock_sqs_moto_and_url_in_env(monkeypatch):
+    with mock_aws():
+        conn = boto3.client('sqs')
+        response = conn.create_queue(
+            QueueName= "test_queue"
+        )
+        monkeypatch.setenv('sqs_queue_url', response['QueueUrl'])
+        yield conn
