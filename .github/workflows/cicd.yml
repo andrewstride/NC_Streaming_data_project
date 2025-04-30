@@ -18,6 +18,10 @@ jobs:
     env:
       AWS_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
     steps:
+      - name: Debug boto3 AWS Region issue
+        run: |
+          echo "AWS Region is: $AWS_REGION"
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
