@@ -1,5 +1,6 @@
-from src.lambda_function import lambda_handler, _env_variables, _build_url, _parse_results, _fetch_data, BASE_URL
+from src.lambda_function import lambda_handler, _env_variables, _build_url, _parse_results, _fetch_data, _send_to_SQS, BASE_URL
 from unittest.mock import patch, Mock
+from botocore.exceptions import ClientError
 import pytest
 import re
 import requests
@@ -119,12 +120,12 @@ class TestBuildUrl:
 class TestParseResults:
     def test_returns_list(self, response_body):
         results = response_body['response']['results']
-        assert isinstance(_parse_results(results), list)
+        assert isinstance(_parse_results(results, "test_ref"), list)
 
-    def test_returns_mvp_keys(self, response_body):
+    def test_returns_mvp_keys_and_reference(self, response_body):
         results = response_body['response']['results']
-        output = _parse_results(results)
-        expected_keys = ["webTitle", "webUrl", "webPublicationDate"]
+        output = _parse_results(results, "test_ref")
+        expected_keys = ["webTitle", "webUrl", "webPublicationDate", "reference"]
         assert len(output) > 0
         for result in output:
             for key in expected_keys:
@@ -132,7 +133,7 @@ class TestParseResults:
 
     def test_unwanted_keys_not_returned(self, response_body):
         results = response_body['response']['results']
-        output = _parse_results(results)
+        output = _parse_results(results, "test_ref")
         unwanted_keys = ['id', 'type', 'sectionId', 'sectionName', 'apiUrl', 'isHosted', 'pillarId', 'pillarName']
         assert len(output) > 0
         for result in output:
@@ -189,6 +190,46 @@ class TestFetchData:
             assert any("Timeout occurred while fetching data:" in m
                    and "Request timed out" in m
                    for m in caplog.messages)
+
+class TestSendToSQS:
+    def test_calls_client_with_send_message_url_and_message(self, mock_sqs_client, message):
+        _send_to_SQS(message, mock_sqs_client, "test_url")
+        mock_sqs_client.send_message.assert_called_with(
+            QueueUrl="test_url",
+            MessageBody=json.dumps(message)
+        )
+
+    def test_logs_message_sent_and_returns_true(self, caplog, mock_sqs_client, message):
+        with caplog.at_level(logging.INFO):
+            output = _send_to_SQS(message, mock_sqs_client, "test_url")
+
+            assert any("Message sent. ID: test_id" in m for m in caplog.messages)
+        assert output
+
+    def test_logs_client_error_and_returns_false(self, caplog, message):
+        sqs_client_error = Mock()
+        error_response = {
+        'Error': {
+            'Code': 'AccessDenied',
+            'Message': 'test_message'
+            }
+        }
+        sqs_client_error.send_message.side_effect = ClientError(error_response, 'SendMessage')
+
+        with caplog.at_level(logging.ERROR):
+            output = _send_to_SQS(message, sqs_client_error, "test_url")
+            assert any("Failed to send message: test_message" in m
+                       for m in caplog.messages)
+        assert not output
+
+    def test_handles_unexpected_error(self, caplog, message):
+        sqs_client_error = Mock()
+        sqs_client_error.send_message.return_value = "unexpected_value"
+        with caplog.at_level(logging.ERROR):
+            output = _send_to_SQS(message, sqs_client_error, "test_url")
+            assert any("Unexpected error when sending message" in m
+                       for m in caplog.messages)
+        assert not output
 
 
 @pytest.fixture(scope="function")
@@ -254,3 +295,23 @@ def api_200_malformed_payload():
     response.ok = True
     response.json.return_value = {"message": "test"}
     return response
+
+@pytest.fixture(scope="function")
+def mock_sqs_client():
+    response = {
+    'MD5OfMessageBody': 'string',
+    'MD5OfMessageAttributes': 'string',
+    'MD5OfMessageSystemAttributes': 'string',
+    'MessageId': 'test_id',
+    'SequenceNumber': 'string'
+}
+    sqs_client = Mock()
+    sqs_client.send_message.return_value = response
+    return sqs_client
+
+@pytest.fixture(scope="function")
+def message():
+    return {
+        "WebURL": "test",
+        "reference": "test_ref"
+    }
