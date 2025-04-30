@@ -15,12 +15,10 @@ jobs:
   test-python:
     runs-on: ubuntu-latest
     name: Run Python Tests
-    steps:
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
+    env:
+      AWS_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
 
+    steps:
       - name: Debug boto3 AWS Region issue
         run: |
           echo "AWS Region is: $AWS_REGION"
