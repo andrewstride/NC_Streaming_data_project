@@ -61,7 +61,7 @@ tf-fmt: tf-init ## Format Terraform code
 	terraform -chdir=terraform fmt
 
 .PHONY: tf-validate
-tf-validate: tf-init ## Validate Terraform code
+tf-validate: lambda-layer tf-init ## Validate Terraform code
 	terraform -chdir=terraform validate
 
 .PHONY: tf-plan
