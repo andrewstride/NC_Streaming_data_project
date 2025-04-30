@@ -448,6 +448,9 @@ dev = [
     { name = "pytest-cov" },
     { name = "ruff" },
 ]
+lambda = [
+    { name = "requests" },
+]
 
 [package.metadata]
 requires-dist = [
@@ -465,6 +468,7 @@ dev = [
     { name = "pytest-cov", specifier = ">=6.1.1" },
     { name = "ruff", specifier = ">=0.11.4" },
 ]
+lambda = [{ name = "requests", specifier = ">=2.32.3" }]
 
 [[package]]
 name = "packageurl-python"
