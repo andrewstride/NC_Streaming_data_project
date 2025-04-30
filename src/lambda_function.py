@@ -49,11 +49,7 @@ def lambda_handler(event, context):
     message_list = _parse_results(data, reference)
     # Send messages to SQS queue
     sqs_client = _get_sqs_client()
-    output = {
-        'statusCode': 200,
-        'messagesSent': 0,
-        'messagesFailed': 0
-    }
+    output = {"statusCode": 200, "messagesSent": 0, "messagesFailed": 0}
     for message in message_list:
         response = _send_to_SQS(message, sqs_client, sqs_queue_url)
         if response:
@@ -61,7 +57,7 @@ def lambda_handler(event, context):
         else:
             output["messagesFailed"] += 1
 
-    output['messages'] = message_list
+    output["messages"] = message_list
     return output
 
 
@@ -78,17 +74,18 @@ def _env_variables():
     return env_vars["api_key"], env_vars["sqs_queue_url"]
 
 
-def _build_url(query: str, api_key: str, date: str=None) -> str:
+def _build_url(query: str, api_key: str, date: str = None) -> str:
     url = f"{BASE_URL}q={query}"
     if date:
         url += f"&from-date={date}"
     return url + f"&api-key={api_key}"
 
+
 def _fetch_data(url: str) -> list:
     try:
         response = requests.get(url, timeout=5)
         response.raise_for_status()
-        data = response.json()['response']['results']
+        data = response.json()["response"]["results"]
         logger.info("%s result(s) collected", str(len(data)))
         return data
     except requests.exceptions.HTTPError as e:
@@ -100,7 +97,8 @@ def _fetch_data(url: str) -> list:
     except Exception as e:
         logger.error("Error while fetching data: %s", f"{e.__class__}: {e}")
         raise
-    
+
+
 def _parse_results(results: list[dict], reference: str) -> list[dict]:
     """Parse results into format for SQS
 
@@ -121,8 +119,10 @@ def _parse_results(results: list[dict], reference: str) -> list[dict]:
         output.append(parsed)
     return output
 
+
 def _get_sqs_client():
-    return boto3.client('sqs')
+    return boto3.client("sqs")
+
 
 def _send_to_SQS(message: dict, sqs_client: boto3.client, sqs_queue_url: str) -> bool:
     """Sends message to SQS queue
@@ -137,15 +137,13 @@ def _send_to_SQS(message: dict, sqs_client: boto3.client, sqs_queue_url: str) ->
     """
     try:
         response = sqs_client.send_message(
-            QueueUrl=sqs_queue_url,
-            MessageBody=json.dumps(message)
+            QueueUrl=sqs_queue_url, MessageBody=json.dumps(message)
         )
-        logger.info("Message sent. ID: %s", response['MessageId'])
-        return bool(response['MessageId'])
+        logger.info("Message sent. ID: %s", response["MessageId"])
+        return bool(response["MessageId"])
     except ClientError as e:
-        logger.error("Failed to send message: %s", e.response['Error']['Message'])
+        logger.error("Failed to send message: %s", e.response["Error"]["Message"])
         return False
-    except Exception as e:
+    except Exception:
         logger.exception("Unexpected error when sending message")
         return False
-    
