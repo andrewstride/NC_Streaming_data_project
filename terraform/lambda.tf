@@ -23,6 +23,14 @@ data "aws_iam_policy_document" "lambda_logging" {
 
     resources = ["arn:aws:logs:*:*:*"]
   }
+  statement {
+    effect = "Allow"
+
+    actions = [
+      "sqs:SendMessage"
+    ]
+    resources = [aws_sqs_queue.retrieved_guardian_articles.arn]
+  }
 }
 
 resource "aws_iam_policy" "lambda_logging" {
