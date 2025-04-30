@@ -7,7 +7,7 @@ terraform {
   }
   backend "s3" {
     bucket = "andrewstride-nc-data-streaming-tf-state"
-    key = "terraform.tfstate"
+    key    = "terraform.tfstate"
     region = "eu-west-2"
   }
 }
