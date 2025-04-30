@@ -51,7 +51,7 @@ def lambda_handler(event, context):
     sqs_client = _get_sqs_client()
     output = {"statusCode": 200, "messagesSent": 0, "messagesFailed": 0}
     for message in message_list:
-        response = _send_to_SQS(message, sqs_client, sqs_queue_url)
+        response = _send_to_SQS(message, reference, sqs_client, sqs_queue_url)
         if response:
             output["messagesSent"] += 1
         else:
@@ -124,11 +124,14 @@ def _get_sqs_client():
     return boto3.client("sqs")
 
 
-def _send_to_SQS(message: dict, sqs_client: boto3.client, sqs_queue_url: str) -> bool:
+def _send_to_SQS(
+    message: dict, reference: str, sqs_client: boto3.client, sqs_queue_url: str
+) -> bool:
     """Sends message to SQS queue
 
     Args:
         message (Dict)
+        reference (Str)
         sqs_client (Boto3.client('SQS'))
         sqs_queue_url (Str)
 
@@ -137,7 +140,9 @@ def _send_to_SQS(message: dict, sqs_client: boto3.client, sqs_queue_url: str) ->
     """
     try:
         response = sqs_client.send_message(
-            QueueUrl=sqs_queue_url, MessageBody=json.dumps(message)
+            QueueUrl=sqs_queue_url,
+            MessageBody=json.dumps(message),
+            MessageGroupId=reference,
         )
         logger.info("Message sent. ID: %s", response["MessageId"])
         return bool(response["MessageId"])

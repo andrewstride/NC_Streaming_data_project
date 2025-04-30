@@ -96,7 +96,7 @@ class TestHandler:
         monkeypatch.setenv("api_key", "test_key")
         assert (
             os.environ.get("sqs_queue_url")
-            == "https://sqs.eu-west-2.amazonaws.com/123456789012/test_queue"
+            == "https://sqs.eu-west-2.amazonaws.com/123456789012/test_queue.fifo"
         )
         assert os.environ.get("AWS_ACCESS_KEY_ID") == "FOOBARKEY"
         with caplog.at_level(logging.INFO):
@@ -138,7 +138,7 @@ class TestHandler:
         monkeypatch.setenv("api_key", "test_key")
         assert (
             os.environ.get("sqs_queue_url")
-            == "https://sqs.eu-west-2.amazonaws.com/123456789012/test_queue"
+            == "https://sqs.eu-west-2.amazonaws.com/123456789012/test_queue.fifo"
         )
         assert os.environ.get("AWS_ACCESS_KEY_ID") == "FOOBARKEY"
         mock_send_to_SQS.return_value = False
@@ -306,14 +306,16 @@ class TestSendToSQS:
     def test_calls_client_with_send_message_url_and_message(
         self, mock_sqs_client, message
     ):
-        _send_to_SQS(message, mock_sqs_client, "test_url")
+        _send_to_SQS(message, "test_ref", mock_sqs_client, "test_url")
         mock_sqs_client.send_message.assert_called_with(
-            QueueUrl="test_url", MessageBody=json.dumps(message)
+            QueueUrl="test_url",
+            MessageBody=json.dumps(message),
+            MessageGroupId="test_ref",
         )
 
     def test_logs_message_sent_and_returns_true(self, caplog, mock_sqs_client, message):
         with caplog.at_level(logging.INFO):
-            output = _send_to_SQS(message, mock_sqs_client, "test_url")
+            output = _send_to_SQS(message, "test_ref", mock_sqs_client, "test_url")
 
             assert any("Message sent. ID: test_id" in m for m in caplog.messages)
         assert output
@@ -326,7 +328,7 @@ class TestSendToSQS:
         )
 
         with caplog.at_level(logging.ERROR):
-            output = _send_to_SQS(message, sqs_client_error, "test_url")
+            output = _send_to_SQS(message, "test_ref", sqs_client_error, "test_url")
             assert any(
                 "Failed to send message: test_message" in m for m in caplog.messages
             )
@@ -336,7 +338,7 @@ class TestSendToSQS:
         sqs_client_error = Mock()
         sqs_client_error.send_message.return_value = "unexpected_value"
         with caplog.at_level(logging.ERROR):
-            output = _send_to_SQS(message, sqs_client_error, "test_url")
+            output = _send_to_SQS(message, "test_ref", sqs_client_error, "test_url")
             assert any(
                 "Unexpected error when sending message" in m for m in caplog.messages
             )
@@ -346,7 +348,7 @@ class TestSendToSQS:
         sqs_url = os.environ.get("sqs_queue_url")
         assert os.environ.get("AWS_ACCESS_KEY_ID") == "FOOBARKEY"
         sqs_client = mock_sqs_moto_and_url_in_env
-        output = _send_to_SQS(message, sqs_client, sqs_url)
+        output = _send_to_SQS(message, "test_ref", sqs_client, sqs_url)
         assert output
         response = sqs_client.receive_message(QueueUrl=sqs_url)
         assert response["Messages"][0]["Body"] == json.dumps(message)
@@ -446,6 +448,9 @@ def message():
 def mock_sqs_moto_and_url_in_env(monkeypatch):
     with mock_aws():
         conn = boto3.client("sqs")
-        response = conn.create_queue(QueueName="test_queue")
+        response = conn.create_queue(
+            QueueName="test_queue.fifo",
+            Attributes={"FifoQueue": "true", "ContentBasedDeduplication": "true"},
+        )
         monkeypatch.setenv("sqs_queue_url", response["QueueUrl"])
         yield conn
