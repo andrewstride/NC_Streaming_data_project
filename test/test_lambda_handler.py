@@ -447,7 +447,7 @@ def message():
 @pytest.fixture(scope="function")
 def mock_sqs_moto_and_url_in_env(monkeypatch):
     with mock_aws():
-        conn = boto3.client("sqs", region_name="eu-west-2")
+        conn = boto3.client("sqs")
         response = conn.create_queue(
             QueueName="test_queue.fifo",
             Attributes={"FifoQueue": "true", "ContentBasedDeduplication": "true"},
