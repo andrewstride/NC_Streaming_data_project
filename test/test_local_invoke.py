@@ -1,15 +1,23 @@
 from src.local_invoke import (
     parse_args,
-    _is_valid_date,
+    is_valid_date,
     request_args,
-    _spaces_replaced,
+    spaces_replaced,
     invoke_lambda,
-    _lambda_name,
+    lambda_name,
+    get_args,
+    handle_lambda_response,
+    get_lambda_client,
+    main,
 )
 from unittest.mock import patch, Mock
+from botocore.response import StreamingBody
+from botocore.exceptions import ClientError
 import shlex
 import pytest
-import os
+import json
+import base64
+import io
 
 
 class TestParseArgs:
@@ -94,29 +102,29 @@ class TestParseArgs:
 
 class TestIsValidDate:
     def test_returns_bool(self):
-        assert isinstance(_is_valid_date(""), bool)
-        assert isinstance(_is_valid_date("2013-01-02"), bool)
-        assert isinstance(_is_valid_date("test"), bool)
+        assert isinstance(is_valid_date(""), bool)
+        assert isinstance(is_valid_date("2013-01-02"), bool)
+        assert isinstance(is_valid_date("test"), bool)
 
     def test_returns_true_for_YYYY_MM_DD_date(self):
-        assert _is_valid_date("2001-01-05")
-        assert _is_valid_date("1997-12-21")
-        assert _is_valid_date("1982-06-28")
+        assert is_valid_date("2001-01-05")
+        assert is_valid_date("1997-12-21")
+        assert is_valid_date("1982-06-28")
 
     def test_returns_false_for_not_YYYY_MM_DD_string(self):
-        assert not _is_valid_date("123-12-12")
-        assert not _is_valid_date("test")
-        assert not _is_valid_date("2001-23")
-        assert not _is_valid_date("1001-10-10-1")
+        assert not is_valid_date("123-12-12")
+        assert not is_valid_date("test")
+        assert not is_valid_date("2001-23")
+        assert not is_valid_date("1001-10-10-1")
 
     def test_returns_false_for_month_or_date_out_of_range(self):
-        assert not _is_valid_date("2001-13-01")
-        assert not _is_valid_date("1997-01-32")
+        assert not is_valid_date("2001-13-01")
+        assert not is_valid_date("1997-01-32")
 
     def test_handles_incorrect_input_format(self):
-        assert not _is_valid_date(234)
-        assert not _is_valid_date(True)
-        assert not _is_valid_date({"test": "dict"})
+        assert not is_valid_date(234)
+        assert not is_valid_date(True)
+        assert not is_valid_date({"test": "dict"})
 
 
 class TestRequestArgs:
@@ -226,24 +234,24 @@ class TestRequestArgs:
 
 class TestSpacesReplaced:
     def test_returns_string(self):
-        assert isinstance(_spaces_replaced(""), str)
+        assert isinstance(spaces_replaced(""), str)
 
     def test_output_contains_no_spaces(self):
-        assert " " not in _spaces_replaced("one two three")
+        assert " " not in spaces_replaced("one two three")
 
     def test_spaces_replaced_with_underscores(self):
-        assert _spaces_replaced("a b c d e") == "a_b_c_d_e"
+        assert spaces_replaced("a b c d e") == "a_b_c_d_e"
 
 
 class TestInvokeLambda:
-    def test_returns_response_dict(self, aws_credentials, args):
+    def test_returns_response_dict(self, args):
         mock_lambda_client = Mock()
         mock_lambda_client.invoke.return_value = {"statusCode": 200}
         output = invoke_lambda(mock_lambda_client, "test", args)
         assert isinstance(output, dict)
         assert output == {"statusCode": 200}
 
-    def test_lambda_invoked(self, aws_credentials, args):
+    def test_lambda_invoked(self, args):
         mock_lambda_client = Mock()
         invoke_lambda(mock_lambda_client, "test", args)
         assert mock_lambda_client.invoke.call_args.kwargs.get("FunctionName") == "test"
@@ -254,109 +262,163 @@ class TestInvokeLambda:
             "Payload",
         ]
 
+    def test_handles_boto3_error(self, args):
+        error_response = {
+            "Error": {
+                "Code": "AccessDeniedException",
+                "Message": "You are not authorized to perform this operation.",
+            }
+        }
+        mock_lambda_raises_exc = Mock()
+        mock_lambda_raises_exc.invoke.side_effect = ClientError(
+            error_response, "Invoke"
+        )
+        with pytest.raises(RuntimeError, match="Failed to invoke Lambda"):
+            invoke_lambda(mock_lambda_raises_exc, "test", args)
+
 
 class TestLambdaName:
     @patch("src.local_invoke.load_dotenv")
     def test_loads_name_from_env(self, mock_load, monkeypatch):
         monkeypatch.setenv("LAMBDA_NAME", "test_name")
-        assert _lambda_name() == "test_name"
+        assert lambda_name() == "test_name"
         assert mock_load.call_count == 1
 
     @patch("src.local_invoke.load_dotenv")
     def test_raises_error_if_not_found(self, mock_load):
         with pytest.raises(EnvironmentError) as e:
-            _lambda_name()
+            lambda_name()
         assert str(e.value) == "LAMBDA_NAME retrieval from .env unsuccessful"
 
 
-# class TestMain:
-#     def test_dummy(self):
-#         main()
+class TestGetArgs:
+    @patch("src.local_invoke.parse_args")
+    def test_invokes_parse_args_and_returns_result(self, mock_parse_args):
+        mock_parse_args.return_value = "expected result"
+        assert get_args() == "expected result"
+        mock_parse_args.assert_called_once()
+
+    @patch("src.local_invoke.parse_args")
+    @patch("src.local_invoke.request_args")
+    def test_invokes_request_args_if_parse_args_returns_none(
+        self, mock_request_args, mock_parse_args
+    ):
+        mock_parse_args.return_value = None
+        mock_request_args.return_value = "expected result"
+        assert get_args() == "expected result"
+        mock_request_args.assert_called_once()
+
+
+class TestHandleLambdaResponse:
+    def test_prints_payload_if_successful(self, lambda_200_response, capsys):
+        handle_lambda_response(lambda_200_response)
+        captured = capsys.readouterr().out.split("\n")
+        assert captured[0] == "Successful response"
+        assert captured[1] == "10 message(s) sent"
+        assert captured[2] == "0 message(s) failed"
+        assert captured[3] == "Messages sent:"
+        assert captured[4] == str({"example": "message1"})
+        assert captured[5] == str({"example": "message2"})
+
+    def test_prints_error_details_if_present(self, lambda_response_with_error, capsys):
+        handle_lambda_response(lambda_response_with_error)
+        captured = capsys.readouterr().out.split("\n")
+        assert (
+            "Error handling payload: 'str' object has no attribute 'read'"
+            in captured[0]
+        )
+        assert captured[1] == "Unhandled Lambda Function Error"
+
+    def test_handles_malformed_response(self, capsys):
+        handle_lambda_response({})
+        captured = capsys.readouterr().out.split("\n")
+        assert captured[0] == "Invalid Lambda response"
+
+    def test_handles_non_2xx_response(self, capsys):
+        handle_lambda_response({"StatusCode": 500, "FunctionError": "Handled"})
+        captured = capsys.readouterr().out.split("\n")
+        assert captured[0] == "Invalid Lambda response"
+        assert captured[1] == "Status Code: 500"
+        assert captured[2] == "Handled Lambda Function Error"
+
+
+class TestGetLambdaClient:
+    @patch("src.local_invoke.boto3")
+    def test_boto3_client_invoked_with_lambda(self, mock_boto3):
+        get_lambda_client()
+        mock_boto3.client.assert_called_with("lambda")
+
+
+class TestMain:
+    @patch("src.local_invoke.get_args")
+    @patch("src.local_invoke.get_lambda_client")
+    @patch("src.local_invoke.invoke_lambda")
+    @patch("src.local_invoke.lambda_name")
+    @patch("src.local_invoke.handle_lambda_response")
+    def test_invokes_functions(
+        self,
+        mock_handle_lambda_response,
+        mock_lambda_name,
+        mock_invoke_lambda,
+        mock_get_lambda_client,
+        mock_get_args,
+    ):
+        mock_get_args.return_value = "test args"
+        mock_get_lambda_client.return_value = "test client"
+        mock_lambda_name.return_value = "test name"
+        mock_invoke_lambda.return_value = "test response"
+        main()
+        mock_get_args.assert_called_once()
+        mock_get_lambda_client.assert_called_once()
+        mock_lambda_name.assert_called_once()
+        mock_invoke_lambda.assert_called_with("test client", "test name", "test args")
+        mock_handle_lambda_response.assert_called_with("test response")
+
+
+@pytest.fixture(scope="function")
+def lambda_response_with_error():
+    return {
+        "StatusCode": 200,
+        "FunctionError": "Unhandled",
+        "Payload": '{"errorMessage": "TypeError: unsupported operand type(s) for +: \'int\' and \'str\'", "errorType": "TypeError", "stackTrace": ["File "/var/task/index.py", line 23, in lambda_handler"]}',
+        "LogResult": "YmFzZTY0ZWVuY29kZWQgbG9nIGluIGxhbWJkYSBmZWF0dXJlcyBvciBzb21lIGV4Y2VwdGlvbnMgb3ZlciBsb2cu",
+        "ExecutedVersion": "$LATEST",
+        "ResponseMetadata": {
+            "RequestId": "12345678-90ab-cdef-ghij-klmnopqrst",
+            "HTTPStatusCode": 200,
+            "HTTPHeaders": {
+                "x-amzn-requestid": "12345678-90ab-cdef-ghij-klmnopqrst",
+                "x-amz-function-error": "Unhandled",
+                "x-amz-id-2": "s23yWl0Wh2teo5ihGVpHlpcOB5TZk8Tx5DgGc3tT00V5t2vF1O5Vp25Ad5wz8NnEB6d8BzIu7TI=",
+            },
+        },
+    }
+
+
+@pytest.fixture(scope="function")
+def lambda_200_response():
+    payload = {
+        "statusCode": 200,
+        "messagesSent": 10,
+        "messagesFailed": 0,
+        "messages": [{"example": "message1"}, {"example": "message2"}],
+    }
+
+    payload_bytes = json.dumps(payload).encode("utf-8")
+    streaming_body = StreamingBody(io.BytesIO(payload_bytes), len(payload_bytes))
+
+    log_output = "10 Messages Sent"
+    log_output_base64 = base64.b64encode(log_output.encode("utf-8")).decode("utf-8")
+
+    return {
+        "ResponseMetadata": {"meta": "data"},
+        "StatusCode": 200,
+        "LogResult": log_output_base64,
+        "ExecutedVersion": "$LATEST",
+        "Payload": streaming_body,
+    }
 
 
 @pytest.fixture(scope="function")
 def args():
     return {"q": "test", "d": "1997-01-01", "ref": "ref"}
-
-
-@pytest.fixture(scope="function")
-def aws_credentials():
-    """Mocked AWS Credentials for moto."""
-    os.environ["AWS_ACCESS_KEY_ID"] = "testing"
-    os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
-    os.environ["AWS_SECURITY_TOKEN"] = "testing"
-    os.environ["AWS_SESSION_TOKEN"] = "testing"
-    os.environ["AWS_DEFAULT_REGION"] = "us-east-1"
-
-
-# @pytest.fixture(scope="function")
-# def aws_lambda(aws_credentials):
-#     """
-#     Return a mocked Lambda client
-#     """
-#     with mock_aws():
-#         iam_client = boto3.client('iam')
-#         role_name = 'test_lambda_role'
-#         policy = iam_client.create_policy(
-#         PolicyName='AWSLambdaBasicExecutionRole',
-#         PolicyDocument='''{
-#             "Version": "2012-10-17",
-#             "Statement": [
-#                 {
-#                     "Effect": "Allow",
-#                     "Action": "logs:CreateLogGroup",
-#                     "Resource": "*"
-#                 }
-#             ]
-#         }'''
-#         )
-#         assume_role_policy = {
-#             "Version": "2012-10-17",
-#             "Statement": [
-#                 {
-#                 "Effect": "Allow",
-#                 "Principal": {
-#                     "Service": "lambda.amazonaws.com"
-#                 },
-#                 "Action": "sts:AssumeRole"
-#                 }
-#                 ]
-#             }
-#         response = iam_client.create_role(
-#             RoleName=role_name,
-#             AssumeRolePolicyDocument=json.dumps(assume_role_policy),
-#             Description='IAM role for Lambda function execution'
-#             )
-#         role_arn = response['Role']['Arn']
-
-#         iam_client.attach_role_policy(
-#             RoleName=role_name,
-#             PolicyArn=policy['Policy']['Arn']
-#             )
-
-
-#         client = boto3.client("lambda")
-#         client.create_function(
-#             FunctionName="test_lambda",
-#             Runtime="python3.8",
-#             Role=role_arn,
-#             Handler="lambda_function.lambda_handler",
-#             Code={"ZipFile": create_lambda_zip()},
-#             Description="Test Lambda function",
-#             Timeout=3,
-#             MemorySize=128,
-#             Publish=True,
-#             )
-#         yield client
-
-# def create_lambda_zip():
-#     code = '''
-# def lambda_handler(event, context):
-#     print(event)
-#     return {"statusCode": 200, "body": "Hello from Lambda"}
-# '''
-#     zip_buffer = io.BytesIO()
-#     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
-#         zip_file.writestr("lambda_function.py", code)
-#     zip_buffer.seek(0)
-#     return zip_buffer.read()
