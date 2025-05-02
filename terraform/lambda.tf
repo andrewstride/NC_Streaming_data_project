@@ -23,6 +23,14 @@ data "aws_iam_policy_document" "lambda_logging" {
 
     resources = ["arn:aws:logs:*:*:*"]
   }
+  statement {
+    effect = "Allow"
+
+    actions = [
+      "sqs:SendMessage"
+    ]
+    resources = [aws_sqs_queue.retrieved_guardian_articles.arn]
+  }
 }
 
 resource "aws_iam_policy" "lambda_logging" {
@@ -49,18 +57,18 @@ data "archive_file" "lambda" {
 }
 
 resource "aws_lambda_function" "guardian_api_lambda" {
-  filename      = "lambda_function_payload.zip"
-  function_name = var.lambda_name
-  role          = aws_iam_role.iam_for_lambda.arn
-  handler       = "lambda_function.lambda_handler"
-
+  filename         = "lambda_function_payload.zip"
+  function_name    = var.lambda_name
+  role             = aws_iam_role.iam_for_lambda.arn
+  handler          = "lambda_function.lambda_handler"
+  layers           = [aws_lambda_layer_version.lambda_layer.arn]
   source_code_hash = data.archive_file.lambda.output_base64sha256
 
   runtime = "python3.12"
 
   environment {
     variables = {
-      api_key = var.guardian_api_key
+      api_key       = var.guardian_api_key
       sqs_queue_url = aws_sqs_queue.retrieved_guardian_articles.url
     }
   }
@@ -69,6 +77,14 @@ resource "aws_lambda_function" "guardian_api_lambda" {
 
 output "lambda_function_arn" {
   description = "ARN of Guardian API Lambda"
-  value = try(aws_lambda_function.guardian_api_lambda.arn)
-  sensitive = true
+  value       = try(aws_lambda_function.guardian_api_lambda.arn)
+  sensitive   = true
+}
+
+resource "aws_lambda_layer_version" "lambda_layer" {
+  filename   = "${path.module}/../layer.zip"
+  layer_name = "lambda_layer_name"
+
+  compatible_runtimes = ["python3.12"]
+  source_code_hash    = filebase64sha256("${path.module}/../layer.zip")
 }

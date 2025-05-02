@@ -11,7 +11,7 @@ variable "lambda_name" {
 }
 
 variable "guardian_api_key" {
-  type = string
+  type      = string
   sensitive = true
 }
 

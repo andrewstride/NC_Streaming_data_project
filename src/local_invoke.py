@@ -108,16 +108,18 @@ def invoke_lambda(lambda_client: boto3.client, lambda_id: str, args: dict) -> di
         FunctionName=lambda_id,
         InvocationType="RequestResponse",
         LogType="Tail",
-        Payload=json.dumps(args)
+        Payload=json.dumps(args),
     )
     return response
 
-def _lambda_name():
+
+def _lambda_name() -> str:
     load_dotenv()
-    name = os.environ.get('LAMBDA_NAME')
+    name = os.environ.get("LAMBDA_NAME")
     if not name:
         raise EnvironmentError("LAMBDA_NAME retrieval from .env unsuccessful")
     return name
+
 
 def main():
     # print details of results found & added to queue
@@ -126,11 +128,10 @@ def main():
     args = parse_args()
     if not args:
         args = request_args()
-    lambda_client = boto3.client('lambda')
+    lambda_client = boto3.client("lambda")
     response = invoke_lambda(lambda_client, _lambda_name(), args)
     print(response)
     # TODO: Handle response - details of results added to queue / error
-
 
 
 if __name__ == "__main__":

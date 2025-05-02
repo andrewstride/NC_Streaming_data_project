@@ -216,3 +216,4 @@ terraform.rc
 
 # Lambda payload zip
 lambda_function_payload.zip
+layer.zip

@@ -4,7 +4,7 @@ SHELL := /bin/bash
 UV := uv
 
 .PHONY: all 
-all: uv dev-setup requirements run-checks ## Run all commands.
+all: uv dev-setup requirements lambda-layer run-checks ## Run all commands.
 
 .PHONY: uv
 uv:  ## Install uv if it's not present.
@@ -39,6 +39,15 @@ unit-test: dev-setup ## Run the unit tests with coverage
 .PHONY: run-checks 
 run-checks: security-test lint fix unit-test ## Run all checks
 
+.PHONY: lambda-layer ## Deploy external dependencies for AWS Lambda
+lambda-layer: requirements
+	$(UV) export --frozen --only-group lambda --no-hashes -o requirements.txt
+	mkdir -p layer/python
+	$(UV) pip install -r requirements.txt --target ./layer/python
+	cd layer && zip -r -X ../layer.zip python
+	rm -rf layer/
+	rm requirements.txt
+
 .PHONY: tf-check
 tf-check: ## Check Terraform installed
 		@command -v terraform >/dev/null 2>&1 || echo "Terraform install required: visit https://developer.hashicorp.com/terraform/tutorials/aws-get-started/install-cli"
@@ -52,11 +61,11 @@ tf-fmt: tf-init ## Format Terraform code
 	terraform -chdir=terraform fmt
 
 .PHONY: tf-validate
-tf-validate: tf-init ## Validate Terraform code
+tf-validate: lambda-layer tf-init ## Validate Terraform code
 	terraform -chdir=terraform validate
 
 .PHONY: tf-plan
-tf-plan: tf-init ## Make Terraform plan
+tf-plan: lambda-layer tf-init ## Make Terraform plan
 	terraform -chdir=terraform plan -input=false
 
 .PHONY: tf-plan-cicd
