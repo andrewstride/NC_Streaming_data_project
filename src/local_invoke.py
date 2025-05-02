@@ -158,12 +158,16 @@ def handle_lambda_response(response: dict) -> None:
         print(f"{response['FunctionError']} Lambda Function Error")
 
 
+def get_lambda_client():
+    return boto3.client("lambda")
+
+
 def main():
     args = get_args()
-    lambda_client = boto3.client("lambda")
+    lambda_client = get_lambda_client()
     response = invoke_lambda(lambda_client, lambda_name(), args)
     handle_lambda_response(response)
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     main()

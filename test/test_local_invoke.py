@@ -7,13 +7,14 @@ from src.local_invoke import (
     lambda_name,
     get_args,
     handle_lambda_response,
+    get_lambda_client,
+    main,
 )
 from unittest.mock import patch, Mock
 from botocore.response import StreamingBody
 from botocore.exceptions import ClientError
 import shlex
 import pytest
-import os
 import json
 import base64
 import io
@@ -243,14 +244,14 @@ class TestSpacesReplaced:
 
 
 class TestInvokeLambda:
-    def test_returns_response_dict(self, aws_credentials, args):
+    def test_returns_response_dict(self, args):
         mock_lambda_client = Mock()
         mock_lambda_client.invoke.return_value = {"statusCode": 200}
         output = invoke_lambda(mock_lambda_client, "test", args)
         assert isinstance(output, dict)
         assert output == {"statusCode": 200}
 
-    def test_lambda_invoked(self, aws_credentials, args):
+    def test_lambda_invoked(self, args):
         mock_lambda_client = Mock()
         invoke_lambda(mock_lambda_client, "test", args)
         assert mock_lambda_client.invoke.call_args.kwargs.get("FunctionName") == "test"
@@ -341,9 +342,37 @@ class TestHandleLambdaResponse:
         assert captured[2] == "Handled Lambda Function Error"
 
 
-# class TestMain:
-#     def test_invokes_args_functions(self):
-#         main()
+class TestGetLambdaClient:
+    @patch("src.local_invoke.boto3")
+    def test_boto3_client_invoked_with_lambda(self, mock_boto3):
+        get_lambda_client()
+        mock_boto3.client.assert_called_with("lambda")
+
+
+class TestMain:
+    @patch("src.local_invoke.get_args")
+    @patch("src.local_invoke.get_lambda_client")
+    @patch("src.local_invoke.invoke_lambda")
+    @patch("src.local_invoke.lambda_name")
+    @patch("src.local_invoke.handle_lambda_response")
+    def test_invokes_functions(
+        self,
+        mock_handle_lambda_response,
+        mock_lambda_name,
+        mock_invoke_lambda,
+        mock_get_lambda_client,
+        mock_get_args,
+    ):
+        mock_get_args.return_value = "test args"
+        mock_get_lambda_client.return_value = "test client"
+        mock_lambda_name.return_value = "test name"
+        mock_invoke_lambda.return_value = "test response"
+        main()
+        mock_get_args.assert_called_once()
+        mock_get_lambda_client.assert_called_once()
+        mock_lambda_name.assert_called_once()
+        mock_invoke_lambda.assert_called_with("test client", "test name", "test args")
+        mock_handle_lambda_response.assert_called_with("test response")
 
 
 @pytest.fixture(scope="function")
@@ -393,13 +422,3 @@ def lambda_200_response():
 @pytest.fixture(scope="function")
 def args():
     return {"q": "test", "d": "1997-01-01", "ref": "ref"}
-
-
-@pytest.fixture(scope="function")
-def aws_credentials():
-    """Mocked AWS Credentials for moto."""
-    os.environ["AWS_ACCESS_KEY_ID"] = "testing"
-    os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
-    os.environ["AWS_SECURITY_TOKEN"] = "testing"
-    os.environ["AWS_SESSION_TOKEN"] = "testing"
-    os.environ["AWS_DEFAULT_REGION"] = "us-east-1"
