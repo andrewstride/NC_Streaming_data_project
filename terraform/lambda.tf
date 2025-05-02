@@ -75,12 +75,6 @@ resource "aws_lambda_function" "guardian_api_lambda" {
   depends_on = [aws_sqs_queue.retrieved_guardian_articles]
 }
 
-output "lambda_function_arn" {
-  description = "ARN of Guardian API Lambda"
-  value       = try(aws_lambda_function.guardian_api_lambda.arn)
-  sensitive   = true
-}
-
 resource "aws_lambda_layer_version" "lambda_layer" {
   filename   = "${path.module}/../layer.zip"
   layer_name = "lambda_layer_name"
