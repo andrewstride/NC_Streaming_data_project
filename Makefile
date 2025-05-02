@@ -3,8 +3,23 @@ PYTHONPATH=${WD}:${WD}/src
 SHELL := /bin/bash
 UV := uv
 
+.PHONY: help
+help:
+	@awk 'BEGIN {FS = ":.*?## "}; /^[a-zA-Z_-]+:.*?## / {printf "\033[36m%-22s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+
+.PHONY: deploy
+deploy: lambda-layer tf-apply ## Install packages and deploy AWS services using Terraform
+
 .PHONY: all 
-all: uv dev-setup requirements lambda-layer run-checks ## Run all commands.
+all: tf-validate run-checks tf-apply ## Run all tests and deploy
+
+.PHONY: invoke
+invoke: ## Invoke Lambda (args: q=query d=YYYY-MM-DD ref=reference)
+	@command $(UV) run src/local_invoke.py $(if $(q), -q $(q)) $(if $(d), -d $(d)) $(if $(ref), -ref $(ref))
+
+.PHONY: tf-destroy
+tf-destroy: ## Destroy infrastructure
+	terraform -chdir=terraform destroy -auto-approve -input=false
 
 .PHONY: uv
 uv:  ## Install uv if it's not present.
@@ -19,7 +34,7 @@ dev-setup: requirements ## Install dev packages
 	$(UV) sync --dev
 
 .PHONY: security-test
-security-test: dev-setup ## Run the security test (pip-audit + bandit)
+security-test: dev-setup ## Run the security tests (pip-audit + bandit)
 	$(UV) run --all-groups pip-audit -lv
 	$(UV) run bandit -lll src/*.py test/*.py
 
@@ -61,7 +76,7 @@ tf-fmt: tf-init ## Format Terraform code
 	terraform -chdir=terraform fmt
 
 .PHONY: tf-validate
-tf-validate: lambda-layer tf-init ## Validate Terraform code
+tf-validate: lambda-layer tf-fmt ## Validate Terraform code
 	terraform -chdir=terraform validate
 
 .PHONY: tf-plan
@@ -80,6 +95,4 @@ tf-apply: tf-plan ## Apply Terraform plan
 tf-apply-cicd: tf-plan-cicd ## Apply Terraform plan from out-file
 	terraform -chdir=terraform apply -auto-approve -input=false tfplan
 
-.PHONY: tf-destroy
-tf-destroy: ## Destroy infrastructure
-	terraform -chdir=terraform destroy -auto-approve -input=false
+
