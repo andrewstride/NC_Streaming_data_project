@@ -33,9 +33,6 @@ jobs:
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
-        
-      - name: Install requirements
-        run: make requirements
 
       - name: Dev setup
         run: make dev-setup
@@ -72,12 +69,6 @@ jobs:
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: '1.9.3'
-
-      - name: Terraform init
-        run: make tf-init
-
-      - name: Terraform Format
-        run: make tf-fmt
 
       - name: Terraform Validate
         run: make tf-validate
