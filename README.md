@@ -128,6 +128,7 @@ Once deployed, the tool can be easily invoked in two ways:
 make invoke q=query ref=reference d=2001-01-01
 ```
 ![Make Invoke Args](make-invoke-args.gif)
+
 Things to note:
 - Date parameter (d=) is optional
 - If you want to search for multiple words use this command:
