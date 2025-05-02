@@ -83,13 +83,13 @@ tf-validate: lambda-layer tf-fmt ## Validate Terraform code
 tf-plan: lambda-layer tf-init ## Make Terraform plan
 	terraform -chdir=terraform plan -input=false
 
-.PHONY: tf-plan-cicd
-tf-plan-cicd: tf-init ## Make Terraform plan with out-file and exit-code
-	terraform -chdir=terraform plan -detailed-exitcode -out=tfplan -input=false
-
 .PHONY: tf-apply
 tf-apply: tf-plan ## Apply Terraform plan
 	terraform -chdir=terraform apply -auto-approve -input=false
+
+.PHONY: tf-plan-cicd
+tf-plan-cicd: ## Make Terraform plan with out-file and exit-code
+	terraform -chdir=terraform plan -detailed-exitcode -out=tfplan -input=false
 
 .PHONY: tf-apply-cicd
 tf-apply-cicd: tf-plan-cicd ## Apply Terraform plan from out-file
