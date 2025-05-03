@@ -63,14 +63,14 @@ Make sure the following tools are installed and properly configured before setti
 
 1. Get a free Guardian API Key at [bonobo.capi.gutools.co.uk/register/developer](https://bonobo.capi.gutools.co.uk/register/developer)
 
-2. Fork the Repository & Clone it using these commands in your terminal:
+2. Click 'Fork' to fork the Repository & clone it using these commands in your terminal:
     ```
     git clone https://github.com/your-username/your-repo-name.git
     cd your-repo name
     ```
 
 3. Setup Terraform Backend in one of two ways:
-- Local backend setup:
+- Local backend setup, alter the ```provider.tf``` file so that the backend section looks like this:
   ```
     backend "local" {
       path = "terraform.tfstate"
@@ -78,7 +78,7 @@ Make sure the following tools are installed and properly configured before setti
   ```
 - Remote bucket setup - [See Instructions](https://developer.hashicorp.com/terraform/language/backend/s3)
   - This requires creating a bucket with the correct permissions
-  - Alter the ```provider.tf``` file to your own bucket details:
+  - Alter the ```provider.tf``` file so that the backed section contains your own bucket details:
     ```
     backend "s3" {
         bucket = "your-own-tf-state-bucket"       
@@ -89,7 +89,7 @@ Make sure the following tools are installed and properly configured before setti
 4. Create a file called ```terraform.tfvars``` in the ```./terraform/``` folder
   - Write the following (required for Terraform):
     ```
-    aws_region       = "region-here"
+    aws_region       = "your-aws-region-here"
     lambda_name      = "name-your-lambda-here"
     guardian_api_key = "input-Guardian-API-key-here"
     sqs_queue_name   = "name-your-sqs-queue-here"
@@ -104,9 +104,17 @@ Make sure the following tools are installed and properly configured before setti
     make deploy
     ```
     - This command will also check if UV and Terraform are installed correctly
-7. Run this command to deploy project and run all tests:
+7. Optional: Run this command to deploy project and run all tests:
     ```
     make all
+    ```
+  - Run this command to run tests
+    ```
+    make unit-test
+    ```
+  - Run this command to see all available commands
+    ```
+    make help
     ```
 
 
